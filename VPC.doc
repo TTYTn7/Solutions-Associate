@@ -1,0 +1,80 @@
+﻿VPC – logically separated partition of the cloud (datacenter)
+Subnets – separate networks within the datacenter. Subnets cannot span AZs, always one subnet – one AZ!
+Route Tables
+Internet Gateways – allows the VPC to talk to the internet
+
+Security Groups – act like web firewalls (only permissive rules, opening ports for inbound traffic. Outbound traffifc always allowed by default. Cannot span VPCs (so, unique for each VPC).
+NACLs (Network Access Control Lists) – more granular cotrol of traffic. Can allow and deny more specific things
+
+
+Creating a new VPC does automatically create a new route table, NACL, and a Security Group. We need to set up the subnets and the Internet Gateway ourselves.
+
+Internet → Route Table → NACLs → Security Groups → Subnet
+
+Subnets – AWS reserves 5 addresses of each subnet
+0 - network address
+255 - broadcast address
+1 – VPC router
+2 – DNS Server
+3 – Reserved for future use
+
+Auto-assign public IP – for networks we want to expose to the Internet. EC2 instances we add in those groups will automatically be assigned a public IP when created (when added to the group?).
+
+Internet Gateway
+Is the gateway through which internet-bound traffic of the subnet gets sent, and through which subnet-bound traffic from the Internet arrives. Is the point where NAT (Network Address Translation) happens.
+One Internet Gateway per VPC.
+
+Route Tables
+Contains a set of rules, called routes, that are used to determine where network traffic from your subnet or gateway is directed
+New subnets that have not been associated with any route table get associated with the main one by default. Thus, it would be a good idea to keep the main route table not public.
+When adding gateways, we should mention them in the route table (e.g. for NAT gateways, when we are trying to reach the internet → destination would be 0.0.0.0/0, target the gateway).
+
+AZs are randomised. us-east-1a in one account might not be the same AZ as us-east-1a in another (might be us-east-1c there). Done to make sure that the natural human bias towards the first options does not tilt the load spread between the Azs.
+
+
+Security Groups act as firewalls. However, for them to even trigger, we need the routing to be on point! So, the subnet should be connected to an Internet Gateway through the route table, if we want to even have the technical chance of reaching it.
+
+
+
+NAT Instances & Gateways
+
+Necessary in order for our EC2’s in private subnets to still have the opportunity to download and update software (basically to stay private, but still have access to the internet).
+
+NAT Instances are single EC2’s that cover that functionality, whereas NAT gateways are highly available, span multiple AZs. NAT Instances are becoming obsolete, but are still on the exam.
+
+    1. Create the NAT instance in the public subnet. 
+    2. Disable source/destination checks. (EC2 instances perform source/destination checks by default. Meaning that the instance must be either the source or destination of traffic for it to pass through)
+    3. Create a route in the (default, main) route table of that VPC, destination 0.0.0.0/0 (internet), target – the NAT instance.
+    4. Should be behind a security group (like web DMZ)
+
+
+Using a NAT instance creates a single point of failure, and can also be easily overwhelmed if used by multiple servers, meaning its a bottleneck. To deal with the latter, we can increase instance size. To deal with the former, we can design for HA with autoscaling groups, subnets in different AZs, and a script to automate failover (?)
+
+
+NAT Gateways
+
+Intuitive to make, same as NAT instance. Steps 1, 2, & 4 don’t concern us, just need to add the route.
+HA within the AZ. Can direct traffic from multiple AZs to a single NAT gateway, but if its AZ goes down, all instances would lose internet access. Best practice – have one gateway per AZ, and direct resources from that AZ to that instance. 
+Starts at 5 Gbps, scales to 45 Gbps.
+
+
+NACLs vs Security Groups
+
+Each subnet can have only one NACL (unlike the security groups). But one NACL can have multiple subnets assigned to it. New subnets are assigned the default NACL, just like with the security groups.
+
+New NACLs start with the default setting of denying everything. To let communication pass through, add allow rules on specific ports (and potentionally, for specific origin addresses).
+For internet traffic to run well, open up ephemeral ports (1014-65535) in the outbound rules!!
+
+Rules are being evaluated in order → lower to higher numbers. So, rule 100 will be evaluated before 200, 300, and so on. Thus, if rule 100 allows something that rule 200 denies, that thing will be allowed. And vice versa.
+Also, NALCs are evaluated before the Security Groups. So if a port is denied on the NACL, it wont even reach the Security Group.
+
+To make sure the instance can also use yum update, make sure to add the ephemeral ports for the inbound rules as well.
+
+Differences between NACLs and Security Groups
+- NACLs get evaluated first
+- NACL’s rules are evaluated in numbered order, Security Group rules are aggregated
+- NACLs are more granular – can deny a specific IP (?)
+- NACLs add the opportunity to deny things, Security Groups only open up ports
+- ONLY ONE NACL per subnet, while there can be multiple Security Groups (???)
+- NACLs are stateless, responces to allowed inbound traffic are subject to the outbound traffic rules (and vice versa). Security Groups are stateful, whatever is allowed to be inboud is automtically allowed as outbound too (what about the other way around?)
+
